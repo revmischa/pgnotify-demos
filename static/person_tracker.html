@@ -1,0 +1,82 @@
+<html>
+<head>
+    <title>Hippie demo: timer</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.0/jquery.min.js"></script>
+    <script src="/static/jquery.ev.js"></script>
+    <script src="/static/DUI.js"></script>
+    <script src="/static/Stream.js"></script>
+    <script src="/static/hippie.js"></script>
+    <script src="/static/json2.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?v=3.exp&sensor=true"></script>
+ 
+    <script>
+    var h;
+    var pins = {};
+    var map;
+  
+    function log_it(stuff) {
+        $("#log").append(stuff+'<br/>');
+    }
+ 
+    $(function() {
+        h = new Hippie(document.location.host, 'person_updated', function() {
+            log_it("connected");
+        },
+        function() {
+            log_it("disconnected");
+        },
+        function(e) {
+            if (e.type == "ping") return;
+            
+            if (e.loc) {
+                var coords = e.loc.coordinates;
+                console.log(coords);
+                var pos = new google.maps.LatLng(coords[1], coords[0]);
+                var pin = pins[e.id + ""];
+                if (! pin) {
+                    pin = new google.maps.Marker({
+                        'map': map,
+                        'position': pos,
+                        'draggable': false,
+                        'title': "Person id=" + e.id
+                    });
+                    pin.addListener("dragend", function(evt) {
+                        console.log(evt.latLng);
+                    });
+                    pins[e.id + ""] = pin;
+                } else {
+                    pin.setPosition(pos);   
+                }                
+                map.panTo(pos);
+                map.setZoom(15);
+            }
+            
+            log_it("got message: " + JSON.stringify(e));
+        } );
+        
+        
+        var mapOptions = {
+            zoom: 14,
+            center: new google.maps.LatLng(37.88, -122.26),
+            mapTypeId: google.maps.MapTypeId.HYBRID
+        };
+        map = new google.maps.Map(document.getElementById('map-canvas'),
+        mapOptions);
+        
+    });
+    </script>
+</head>
+<body>
+ 
+    <div id="content">
+  
+        <div id="log">
+ 
+        </div>
+        
+        <div id="map-canvas" style="width:100%; height:95%;"></div>
+ 
+    </div>
+</body>
+</html>
+
