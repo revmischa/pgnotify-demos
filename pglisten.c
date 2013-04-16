@@ -7,14 +7,19 @@
 #include <string.h>
 
 // channel to LISTEN on
-const char *listenChannel = "person_updated";
+// you can set this via argv, too
+const char *listenChannel = "foobar";
 
 void mainLoop(PGconn *conn);
 void exitClean(PGconn *conn);
 void handlePgRead(PGconn *conn);
 void initListen(PGconn *conn);
 
-int main() {
+int main(int argc, char **argv) {
+    if (argc == 2) {
+        listenChannel = argv[1];
+    }
+    
     const char* connInfoKeys[] = {
         "host",
         NULL
@@ -52,6 +57,7 @@ void mainLoop(PGconn *conn) {
     int done = 0;
     int connected = 0;
     int sentListen = 0;
+    int connPollReady = 0;
     PostgresPollingStatusType connStatus;
         
     while (! done) {        
@@ -65,25 +71,30 @@ void mainLoop(PGconn *conn) {
         FD_ZERO(&wfds);
         
         if (! connected) {
-            connStatus = PQconnectPoll(conn);
+            if (connPollReady) {
+                connStatus = PQconnectPoll(conn);
             
-            switch (connStatus) {
-            case PGRES_POLLING_FAILED:
-                fprintf(stderr, "Pg connection failed: %s",
-                        PQerrorMessage(conn));
-                return;
-            case PGRES_POLLING_WRITING:
-                FD_SET(sock, &wfds);
-                break;
-            case PGRES_POLLING_READING:
-                FD_SET(sock, &rfds);
-                break;
+                switch (connStatus) {
+                case PGRES_POLLING_FAILED:
+                    fprintf(stderr, "Pg connection failed: %s",
+                            PQerrorMessage(conn));
+                    return;
+                case PGRES_POLLING_WRITING:
+                    FD_SET(sock, &wfds);
+                    break;
+                case PGRES_POLLING_READING:
+                    FD_SET(sock, &rfds);
+                    break;
                 
-            case PGRES_POLLING_OK:
-                printf("Connected\n");
-                connected = 1;
-                initListen(conn);
-                break;
+                case PGRES_POLLING_OK:
+                    printf("Connected\n");
+                    connected = 1;
+                    initListen(conn);
+                    break;
+                }
+            } else {
+                // wait for sock fd to become writable
+                FD_SET(sock, &wfds);
             }
         } 
         
@@ -98,6 +109,8 @@ void mainLoop(PGconn *conn) {
                 done = 1;
                 break;
             default:
+                connPollReady = 1;
+                
                 if (! connected)
                     break;
 
