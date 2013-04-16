@@ -60,37 +60,44 @@ void mainLoop(PGconn *conn) {
     int connPollReady = 0;
     PostgresPollingStatusType connStatus;
         
-    while (! done) {        
+    while (! done) {
+        // get connection underlying fd
         sock = PQsocket(conn);
         if (sock < 0) {
             printf("Postgres socket is gone\n");
             exitClean(conn);
         }
         
+        // initialize select() fd sets
         FD_ZERO(&rfds);
         FD_ZERO(&wfds);
         
         if (! connected) {
             if (connPollReady) {
+                // ready to poll for connection status?
                 connStatus = PQconnectPoll(conn);
             
                 switch (connStatus) {
-                case PGRES_POLLING_FAILED:
-                    fprintf(stderr, "Pg connection failed: %s",
-                            PQerrorMessage(conn));
-                    return;
-                case PGRES_POLLING_WRITING:
-                    FD_SET(sock, &wfds);
-                    break;
-                case PGRES_POLLING_READING:
-                    FD_SET(sock, &rfds);
-                    break;
-                
-                case PGRES_POLLING_OK:
-                    printf("Connected\n");
-                    connected = 1;
-                    initListen(conn);
-                    break;
+                    case PGRES_POLLING_FAILED:
+                        // connect failed
+                        fprintf(stderr, "Pg connection failed: %s",
+                                PQerrorMessage(conn));
+                        return;
+                    case PGRES_POLLING_WRITING:
+                        // ready to send data to server
+                        FD_SET(sock, &wfds);
+                        break;
+                    case PGRES_POLLING_READING:
+                        // ready to read back from server
+                        FD_SET(sock, &rfds);
+                        break;
+                    case PGRES_POLLING_OK:
+                        // we are now connected and done polling 
+                        // the connection state
+                        printf("Connected\n");
+                        connected = 1;
+                        initListen(conn);
+                        break;
                 }
             } else {
                 // wait for sock fd to become writable
@@ -99,9 +106,11 @@ void mainLoop(PGconn *conn) {
         } 
         
         if (connected) {
+            // select on connection becoming readable
             FD_SET(sock, &rfds);
         }
         
+        // hang out until there is stuff to read or write
         retval = select(sock + 1, &rfds, &wfds, NULL, NULL);
         switch (retval) {
             case -1:
@@ -114,11 +123,12 @@ void mainLoop(PGconn *conn) {
                 if (! connected)
                     break;
 
+                // this is always going to be true, but you'll want to
+                // check it if you are selecting on more than one fd
                 if (FD_ISSET(sock, &rfds)) {
-                    // ready to read from pg
+                    // ready to read something interesting
                     handlePgRead(conn);
                 }
-                
                 break;
         }
     }     
@@ -130,7 +140,10 @@ void initListen(PGconn *conn) {
     char *query;
     asprintf(&query, "LISTEN %s", quotedChannel);
     
+    // send LISTEN query
     int qs = PQsendQuery(conn, query);
+    
+    // release resources
     PQfreemem(quotedChannel);
     free(query);
     if (! qs) {
