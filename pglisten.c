@@ -47,16 +47,13 @@ void exitClean(PGconn *conn) {
 
 void mainLoop(PGconn *conn) {
     fd_set rfds, wfds;
-    struct timeval tv;
     int retval;
     int sock;
     int done = 0;
     int connected = 0;
     int sentListen = 0;
     PostgresPollingStatusType connStatus;
-    
-    // wait for 
-    
+        
     while (! done) {        
         sock = PQsocket(conn);
         if (sock < 0) {
@@ -66,9 +63,6 @@ void mainLoop(PGconn *conn) {
         
         FD_ZERO(&rfds);
         FD_ZERO(&wfds);
-        
-        tv.tv_sec = 2;
-        tv.tv_usec = 0;
         
         if (! connected) {
             connStatus = PQconnectPoll(conn);
@@ -97,14 +91,11 @@ void mainLoop(PGconn *conn) {
             FD_SET(sock, &rfds);
         }
         
-        retval = select(sock + 1, &rfds, &wfds, NULL, &tv);
+        retval = select(sock + 1, &rfds, &wfds, NULL, NULL);
         switch (retval) {
             case -1:
                 perror("select() failed");
                 done = 1;
-                break;
-            case 0:
-                // timeout
                 break;
             default:
                 if (! connected)
@@ -160,8 +151,7 @@ void handlePgRead(PGconn *conn) {
     
     // check for async notifs
     while (notify = PQnotifies(conn)) {
-        fprintf(stderr,
-                "NOTIFY of '%s' received from backend PID %d: '%s'\n",
+        printf("NOTIFY of '%s' received from backend PID %d: '%s'\n",
                 notify->relname, notify->be_pid, notify->extra);
         PQfreemem(notify);
     }

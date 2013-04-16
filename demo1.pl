@@ -16,11 +16,21 @@ my $bus = AnyMQ->new_with_traits(
 );
 
 # see AnyMQ docs for usage
-my $topic = $bus->topic('mychannel');
+
+# create topic reference
+my $topic = $bus->topic('foo');
+
+# create listener for topic
 my $listen_watcher = $bus->new_listener($topic);
+
+# set up event callback
 $listen_watcher->poll(sub {
     my ($evt) = @_;
-    warn "Got notified of my_event: " . Dumper($evt) . "\n";
+    warn "Got notified of foo: " . Dumper($evt) . "\n";
 });
-$topic->publish({ foo => 123 });
+
+# publish an event
+$topic->publish({ blargle => 123 });
+
+# block
 AE::cv->recv;
